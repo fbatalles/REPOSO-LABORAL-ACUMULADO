@@ -33,12 +33,28 @@ def read_uploaded_file(name: str, content: bytes) -> pd.DataFrame:
 
 def standardize_columns(raw: pd.DataFrame) -> pd.DataFrame:
     aliases = {
+        # Encabezados originales y encabezados internos ya soportados.
         "folio": "folio", "ruttrabajador": "rut", "rut": "rut",
         "calidadtrabajador": "calidad", "calidad": "calidad",
         "region": "region", "regin": "region", "fechainicio": "fecha_inicio",
         "fechatermino": "fecha_termino", "dias": "dias", "diasautorizados": "dias",
         "cie10": "cie10", "estadolicencia": "estado", "estado": "estado",
         "idsiniestro": "siniestro", "siniestro": "siniestro",
+
+        # Encabezados actuales de la base de datos.
+        # normalize_text() elimina guiones bajos, espacios, tildes y mayúsculas,
+        # por eso aquí se escriben sin esos caracteres.
+        "folio1": "folio",
+        "ruttrabajador1": "rut",
+        "calidadtrabajador1": "calidad",
+        "nombreregion": "region",
+        "fechainicioreposo": "fecha_inicio",
+        "fechaterminoreposo": "fecha_termino",
+        "cdiaslicencia": "dias",
+        "cie10decodificadozonaa": "cie10",
+        "textbox51": "tipo_licencia",
+        "estadolicencia1": "estado",
+        "idsiniestro1": "siniestro",
     }
     rename = {c: aliases[normalize_text(c)] for c in raw.columns if normalize_text(c) in aliases}
     data = raw.rename(columns=rename).copy()
