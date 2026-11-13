@@ -107,8 +107,26 @@ with st.sidebar:
     qualities = sorted(result["Calidad trabajador"].dropna().unique().tolist())
     selected_qualities = st.multiselect("Calidad del trabajador", qualities, default=qualities)
     rut_query = st.text_input("RUT", placeholder="Ejemplo: 12345678-9", type="search")
-    week_min, week_max = float(result["Semanas autorizadas"].min()), float(result["Semanas autorizadas"].max())
-    weeks = st.slider("Rango de semanas autorizadas", min_value=float(int(week_min)), max_value=float(max(int(week_max) + 1, int(week_min) + 1)), value=(float(int(week_min)), float(max(int(week_max) + 1, int(week_min) + 1))), step=0.1)
+    week_data_min = float(result["Semanas autorizadas"].min())
+    week_data_max = float(result["Semanas autorizadas"].max())
+    st.markdown("**Rango de semanas autorizadas**")
+    week_from = st.number_input(
+        "Semanas desde",
+        min_value=0.0,
+        max_value=max(week_data_max, 0.0),
+        value=max(0.0, min(week_data_min, week_data_max)),
+        step=0.1,
+        format="%.1f",
+    )
+    week_to = st.number_input(
+        "Semanas hasta",
+        min_value=0.0,
+        max_value=max(week_data_max, 0.0),
+        value=max(week_data_max, 0.0),
+        step=0.1,
+        format="%.1f",
+    )
+    weeks = (week_from, week_to)
     dates = st.date_input("Inicio de la primera licencia", value=(result["Inicio primera licencia"].min().date(), result["Inicio primera licencia"].max().date()))
     if st.button("Cargar otra base", icon=":material/upload_file:"):
         st.session_state.upload_key += 1
@@ -116,7 +134,11 @@ with st.sidebar:
 filtered = result[result["Calidad trabajador"].isin(selected_qualities)].copy()
 if rut_query:
     filtered = filtered[filtered["RUT trabajador"].str.contains(rut_query.strip(), case=False, na=False)]
-filtered = filtered[filtered["Semanas autorizadas"].between(weeks[0], weeks[1])]
+if weeks[0] > weeks[1]:
+    st.warning("El valor de semanas desde no puede ser mayor que semanas hasta.")
+    filtered = filtered.iloc[0:0]
+else:
+    filtered = filtered[filtered["Semanas autorizadas"].between(weeks[0], weeks[1])]
 if isinstance(dates, tuple) and len(dates) == 2:
     filtered = filtered[filtered["Inicio primera licencia"].dt.date.between(dates[0], dates[1])]
 with st.container(horizontal=True):
