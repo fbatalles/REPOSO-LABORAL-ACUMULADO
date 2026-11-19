@@ -79,7 +79,10 @@ def build_summary(data: pd.DataFrame) -> pd.DataFrame:
     # Las licencias de trabajadores del sector público no deben participar
     # en el cálculo, independientemente de que su texto incluya "afecto" o
     # "no afecto" a la Ley 18.834.
-    public_worker = data["calidad"].map(normalize_text).str.contains("publico", na=False)
+    normalized_quality = data["calidad"].map(normalize_text)
+    # "público" puede llegar como "publico" o como texto mal codificado
+    # (por ejemplo, "pablico") desde algunos archivos exportados.
+    public_worker = normalized_quality.str.contains(r"p[ua]blico", regex=True, na=False)
     valid = data[data["estado_normalizado"].isin(VALID_STATES) & ~public_worker].copy()
     if valid.empty:
         return pd.DataFrame()
@@ -87,8 +90,10 @@ def build_summary(data: pd.DataFrame) -> pd.DataFrame:
     valid = valid.sort_values(keys + ["fecha_inicio"])
     # Una licencia puede aparecer más de una vez en la base. Para el conteo
     # se considera una sola por trabajador, siniestro e igual período.
+    valid["periodo_inicio"] = valid["fecha_inicio"].dt.normalize()
+    valid["periodo_termino"] = valid["fecha_termino"].dt.normalize()
     valid = valid.drop_duplicates(
-        subset=keys + ["fecha_inicio", "fecha_termino"],
+        subset=keys + ["periodo_inicio", "periodo_termino"],
         keep="first",
     )
     grouped = valid.groupby(keys, dropna=False, sort=False)
