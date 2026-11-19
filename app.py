@@ -65,7 +65,7 @@ def standardize_columns(raw: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError("Faltan columnas obligatorias: " + ", ".join(missing))
     for column, fallback in (("calidad", "Sin informacion"), ("region", "Sin informacion"), ("cie10", "Sin informacion")):
-        data[column] = data[column].astype("string").fillna(fallback).str.strip()
+        data[column] = data[column].astype("string").str.strip().replace("", pd.NA).fillna(fallback)
     data["rut"] = data["rut"].astype("string").str.strip()
     data["siniestro"] = data["siniestro"].astype("string").str.strip()
     data["estado_normalizado"] = data["estado"].map(normalize_text)
@@ -90,7 +90,7 @@ def build_summary(data: pd.DataFrame) -> pd.DataFrame:
     # registros públicos del mismo siniestro se consideran errores de carga.
     allowed_quality = normalized_quality.str.contains(
         r"independiente|privado", regex=True, na=False
-    )
+    ) | normalized_quality.eq("sininformacion")
     valid = valid[allowed_quality].copy()
     if valid.empty:
         return pd.DataFrame()
@@ -113,7 +113,7 @@ def build_summary(data: pd.DataFrame) -> pd.DataFrame:
     return summary.rename(columns={"rut": "RUT trabajador", "siniestro": "ID siniestro", "numero_licencias": "N licencias", "dias_autorizados": "Dias autorizados", "semanas_autorizadas": "Semanas autorizadas", "inicio_primera_licencia": "Inicio primera licencia", "termino_ultima_licencia": "Termino ultima licencia", "cie10_primera_licencia": "CIE10 primera licencia", "cie10_ultima_licencia": "CIE10 ultima licencia", "calidad_trabajador": "Calidad trabajador", "region": "Region", "alertas": "Alertas"})
 
 
-CALCULATION_VERSION = "quality-independent-private-v3"
+CALCULATION_VERSION = "quality-independent-private-unknown-v4"
 
 
 @st.cache_data(show_spinner=False)
@@ -129,7 +129,7 @@ st.caption("Cada usuario carga su propia base y el analisis se realiza dentro de
 with st.container(border=True):
     st.subheader("Actualizar base de datos")
     uploaded = st.file_uploader("Selecciona un archivo Excel o CSV", type=["xlsx", "xls", "csv"], key=f"database_upload_{st.session_state.upload_key}", help="La base cargada no se guarda en GitHub ni en una base central.")
-    st.info("Se consideran los estados Cotizacion pagada, Cotizacion pagada parcialmente y Cotizacion pendiente pago; se excluyen trabajadores publicos y se cuenta una sola licencia por igual periodo.", title="Regla de calculo")
+    st.info("Se consideran los estados Cotizacion pagada, Cotizacion pagada parcialmente y Cotizacion pendiente pago; se incluyen calidades independiente, privado y sin informacion, se excluyen trabajadores publicos y se cuenta una sola licencia por igual periodo.", title="Regla de calculo")
 if not uploaded:
     st.warning("Carga un archivo para comenzar.", title="Base de datos pendiente")
     st.stop()
