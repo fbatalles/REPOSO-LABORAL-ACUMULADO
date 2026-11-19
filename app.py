@@ -76,11 +76,21 @@ def standardize_columns(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_summary(data: pd.DataFrame) -> pd.DataFrame:
-    valid = data[data["estado_normalizado"].isin(VALID_STATES)].copy()
+    # Las licencias de trabajadores del sector público no deben participar
+    # en el cálculo, independientemente de que su texto incluya "afecto" o
+    # "no afecto" a la Ley 18.834.
+    public_worker = data["calidad"].map(normalize_text).str.contains("publico", na=False)
+    valid = data[data["estado_normalizado"].isin(VALID_STATES) & ~public_worker].copy()
     if valid.empty:
         return pd.DataFrame()
     keys = ["rut", "siniestro"]
     valid = valid.sort_values(keys + ["fecha_inicio"])
+    # Una licencia puede aparecer más de una vez en la base. Para el conteo
+    # se considera una sola por trabajador, siniestro e igual período.
+    valid = valid.drop_duplicates(
+        subset=keys + ["fecha_inicio", "fecha_termino"],
+        keep="first",
+    )
     grouped = valid.groupby(keys, dropna=False, sort=False)
     summary = grouped.agg(numero_licencias=("fecha_inicio", "size"), dias_autorizados=("dias", "sum"), inicio_primera_licencia=("fecha_inicio", "min")).reset_index()
     first = valid.loc[grouped["fecha_inicio"].idxmin(), keys + ["cie10"]].rename(columns={"cie10": "cie10_primera_licencia"})
@@ -104,7 +114,7 @@ st.caption("Cada usuario carga su propia base y el analisis se realiza dentro de
 with st.container(border=True):
     st.subheader("Actualizar base de datos")
     uploaded = st.file_uploader("Selecciona un archivo Excel o CSV", type=["xlsx", "xls", "csv"], key=f"database_upload_{st.session_state.upload_key}", help="La base cargada no se guarda en GitHub ni en una base central.")
-    st.info("Se consideran los estados Cotizacion pagada, Cotizacion pagada parcialmente y Cotizacion pendiente pago.", title="Regla de calculo")
+    st.info("Se consideran los estados Cotizacion pagada, Cotizacion pagada parcialmente y Cotizacion pendiente pago; se excluyen trabajadores publicos y se cuenta una sola licencia por igual periodo.", title="Regla de calculo")
 if not uploaded:
     st.warning("Carga un archivo para comenzar.", title="Base de datos pendiente")
     st.stop()
@@ -164,5 +174,31 @@ with st.container(horizontal=True):
     st.metric("Semanas maximas", f"{filtered['Semanas autorizadas'].max():.1f}" if not filtered.empty else "0.0", border=True)
 columns = ["RUT trabajador", "ID siniestro", "Calidad trabajador", "N licencias", "Dias autorizados", "Semanas autorizadas", "Inicio primera licencia", "Termino ultima licencia", "CIE10 primera licencia", "CIE10 ultima licencia", "Region", "Alertas"]
 st.subheader("Resumen por trabajador y siniestro")
-st.dataframe(filtered[columns].sort_values("Semanas autorizadas", ascending=False), hide_index=True, width="stretch", column_config={"Semanas autorizadas": st.column_config.NumberColumn(format="%.1f"), "Inicio primera licencia": st.column_config.DateColumn(format="DD/MM/YYYY"), "Termino ultima licencia": st.column_config.DateColumn(format="DD/MM/YYYY")}, alt="Resumen de licencias medicas agrupadas por RUT e ID de siniestro")
+table_data = filtered[columns].sort_values("Semanas autorizadas", ascending=False).reset_index(drop=True)
+table_event = st.dataframe(
+    table_data,
+    hide_index=True,
+    width="stretch",
+    key="results_table",
+    on_select="rerun",
+    selection_mode="single-row",
+    column_config={"Semanas autorizadas": st.column_config.NumberColumn(format="%.1f"), "Inicio primera licencia": st.column_config.DateColumn(format="DD/MM/YYYY"), "Termino ultima licencia": st.column_config.DateColumn(format="DD/MM/YYYY")},
+    alt="Resumen de licencias medicas agrupadas por RUT e ID de siniestro. Haz clic en una fila para ver el detalle del RUT.",
+)
 st.download_button("Descargar resultados filtrados", data=filtered[columns].to_csv(index=False).encode("utf-8-sig"), file_name="resumen_licencias_filtrado.csv", mime="text/csv", icon=":material/download:")
+
+selected_rows = table_event.selection.rows
+if selected_rows:
+    selected_rut = str(table_data.iloc[selected_rows[0]]["RUT trabajador"])
+    rut_detail = table_data[table_data["RUT trabajador"].astype(str) == selected_rut].copy()
+    total_licenses = int(rut_detail["N licencias"].sum())
+    total_days = float(rut_detail["Dias autorizados"].sum())
+    st.subheader(f"Detalle del RUT {selected_rut}")
+    with st.container(horizontal=True):
+        st.metric("Licencias", f"{total_licenses:,}", border=True)
+        st.metric("Días autorizados", f"{total_days:,.0f}", border=True)
+        st.metric("Semanas autorizadas", f"{total_days / 7:,.1f}", border=True)
+        st.metric("Siniestros", f"{len(rut_detail):,}", border=True)
+    st.dataframe(rut_detail, hide_index=True, width="stretch", column_config={"Semanas autorizadas": st.column_config.NumberColumn(format="%.1f"), "Inicio primera licencia": st.column_config.DateColumn(format="DD/MM/YYYY"), "Termino ultima licencia": st.column_config.DateColumn(format="DD/MM/YYYY")}, alt=f"Detalle de licencias del RUT {selected_rut}")
+    st.download_button("Descargar información del RUT seleccionado", data=rut_detail.to_csv(index=False).encode("utf-8-sig"), file_name=f"detalle_licencias_{selected_rut}.csv", mime="text/csv", icon=":material/download:")
+
