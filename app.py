@@ -113,8 +113,11 @@ def build_summary(data: pd.DataFrame) -> pd.DataFrame:
     return summary.rename(columns={"rut": "RUT trabajador", "siniestro": "ID siniestro", "numero_licencias": "N licencias", "dias_autorizados": "Dias autorizados", "semanas_autorizadas": "Semanas autorizadas", "inicio_primera_licencia": "Inicio primera licencia", "termino_ultima_licencia": "Termino ultima licencia", "cie10_primera_licencia": "CIE10 primera licencia", "cie10_ultima_licencia": "CIE10 ultima licencia", "calidad_trabajador": "Calidad trabajador", "region": "Region", "alertas": "Alertas"})
 
 
+CALCULATION_VERSION = "quality-independent-private-v3"
+
+
 @st.cache_data(show_spinner=False)
-def process_file(name: str, content: bytes) -> tuple[pd.DataFrame, int]:
+def process_file(name: str, content: bytes, calculation_version: str = CALCULATION_VERSION) -> tuple[pd.DataFrame, int]:
     data = standardize_columns(read_uploaded_file(name, content))
     return build_summary(data), len(data)
 
@@ -132,7 +135,7 @@ if not uploaded:
     st.stop()
 try:
     with st.spinner("Procesando la base y calculando semanas..."):
-        result, source_rows = process_file(uploaded.name, uploaded.getvalue())
+        result, source_rows = process_file(uploaded.name, uploaded.getvalue(), CALCULATION_VERSION)
 except (ValueError, KeyError, OSError) as exc:
     st.error(str(exc), title="No se pudo procesar el archivo")
     st.stop()
@@ -213,4 +216,3 @@ if selected_rows:
         st.metric("Siniestros", f"{len(rut_detail):,}", border=True)
     st.dataframe(rut_detail, hide_index=True, width="stretch", column_config={"Semanas autorizadas": st.column_config.NumberColumn(format="%.1f"), "Inicio primera licencia": st.column_config.DateColumn(format="DD/MM/YYYY"), "Termino ultima licencia": st.column_config.DateColumn(format="DD/MM/YYYY")}, alt=f"Detalle de licencias del RUT {selected_rut}")
     st.download_button("Descargar información del RUT seleccionado", data=rut_detail.to_csv(index=False).encode("utf-8-sig"), file_name=f"detalle_licencias_{selected_rut}.csv", mime="text/csv", icon=":material/download:")
-
