@@ -88,12 +88,10 @@ def build_summary(data: pd.DataFrame) -> pd.DataFrame:
     normalized_quality = valid["calidad"].map(normalize_text)
     # Si existe un trabajador independiente para un RUT/siniestro, los
     # registros públicos del mismo siniestro se consideran errores de carga.
-    is_independent = normalized_quality.str.contains("independiente", na=False)
-    is_public = normalized_quality.str.contains(r"p[ua]blico", regex=True, na=False)
-    has_independent = is_independent.groupby(
-        [valid["rut"], valid["siniestro"]], dropna=False
-    ).transform("any")
-    valid = valid[~(has_independent & is_public)].copy()
+    allowed_quality = normalized_quality.str.contains(
+        r"independiente|privado", regex=True, na=False
+    )
+    valid = valid[allowed_quality].copy()
     if valid.empty:
         return pd.DataFrame()
     valid = valid.sort_values(keys + ["fecha_inicio"])
